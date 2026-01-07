@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Twitter Reply App</title>
+<style>
+html, body { width: 100%; height: 100%; margin: 0; padding: 0; font-family: Arial; background: #fafafa; }
+h1 { text-align: center; margin-bottom: 10px; }
+.container { width: 95%; max-width: 900px; margin: auto; padding: 10px; }
+.row { display: flex; flex-direction: column; border: 1px solid #ddd; padding: 8px; margin: 10px 0; background: #fff; border-radius: 5px; }
+input, select, button { width: 100%; padding: 12px; margin-bottom: 5px; box-sizing: border-box; }
+.reply { margin-top: 5px; padding: 8px; border: 1px solid #ccc; background: #f0f0f0; min-height: 50px; border-radius: 4px; }
+.button-container { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
+.follow-call { text-align: center; font-weight: bold; margin: 20px 0; font-size: 18px; color: #222; }
+.follow-call a { color: #1DA1F2; text-decoration: none; }
+.footer { text-align: center; margin-top: 20px; font-size: 14px; color: #555; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>AI Twitter Reply App</h1>
+<div class="follow-call">Follow me on Twitter: <a href="https://twitter.com/qodedstuff" target="_blank">@qodedstuff</a></div>
+<label>Choose Reply Tone:</label>
+<select id="toneSelect">
+  <option value="witty">Witty</option>
+  <option value="professional">Professional</option>
+  <option value="supportive">Supportive</option>
+  <option value="casual">Casual</option>
+</select>
+<button onclick="generateAll()">Generate All Replies</button>
+<div id="rows"></div>
+<div class="footer">Built by QODED</div>
+</div>
+<script>
+const rowsDiv = document.getElementById("rows");
+for(let i=1; i<=10; i++){
+  const row = document.createElement("div");
+  row.className="row";
+  row.innerHTML = `
+    <input id="link${i}" placeholder="Paste tweet link ${i}">
+    <div id="reply${i}" class="reply">AI reply will appear here</div>
+    <div class="button-container">
+      <button onclick="reloadReply(${i})">Reload AI Reply</button>
+      <button onclick="sendToTwitter(${i})">Send</button>
+      <button onclick="copyReply(${i})">Copy</button>
+    </div>
+  `;
+  rowsDiv.appendChild(row);
+}
+async function fetchTweetText(url){ try { const resp = await fetch("https://publish.twitter.com/oembed?url=" + encodeURIComponent(url)); const data = await resp.json(); return data.html.replace(/<[^>]*>?/gm,'').trim(); } catch { return ""; } }
+async function aiReply(prompt, tone){ try { const resp = await fetch("/.netlify/functions/aiReply", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({prompt, tone}) }); const data = await resp.json(); return data.reply || "AI did not respond"; } catch { return "Error generating reply"; } }
+async function generateAll(){ const tone = document.getElementById("toneSelect").value; for(let i=1;i<=10;i++){ const link = document.getElementById("link"+i).value.trim(); const replyDiv = document.getElementById("reply"+i); if(!link){ replyDiv.textContent="Paste tweet link first"; continue; } replyDiv.textContent="Generating..."; const tweetText = await fetchTweetText(link); const reply = await aiReply(tweetText || "Tweet unavailable", tone); replyDiv.textContent = reply; replyDiv.dataset.lastPrompt = tweetText || ""; replyDiv.dataset.tone = tone; } }
+async function reloadReply(i){ const replyDiv = document.getElementById("reply"+i); const lastPrompt = replyDiv.dataset.lastPrompt; const tone = replyDiv.dataset.tone; if(!lastPrompt){ replyDiv.textContent="Generate first"; return; } replyDiv.textContent="Generating new variation..."; replyDiv.textContent = await aiReply(lastPrompt, tone); }
+function copyReply(i){ const reply = document.getElementById("reply"+i).textContent; navigator.clipboard.writeText(reply); }
+function sendToTwitter(i){ const reply = document.getElementById("reply"+i).textContent; const link = document.getElementById("link"+i).value.trim(); const id = link.split("/").pop().split("?")[0]; const url = "https://twitter.com/intent/tweet?in_reply_to=" + id + "&text=" + encodeURIComponent(reply); window.open(url, "_blank"); }
+</script>
+</body>
+</html>
