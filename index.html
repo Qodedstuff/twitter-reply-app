@@ -15,6 +15,8 @@ input, select, button { width: 100%; padding: 12px; margin-bottom: 5px; box-sizi
 .follow-call { text-align: center; font-weight: bold; margin: 20px 0; font-size: 18px; color: #222; }
 .follow-call a { color: #1DA1F2; text-decoration: none; }
 .footer { text-align: center; margin-top: 20px; font-size: 14px; color: #555; }
+.retry-btn { background: #1DA1F2; color: white; border: none; cursor: pointer; }
+.retry-btn:hover { background: #0d8bd9; }
 </style>
 </head>
 <body>
@@ -41,19 +43,9 @@ for(let i=1; i<=10; i++){
     <input id="link${i}" placeholder="Paste tweet link ${i}">
     <div id="reply${i}" class="reply">AI reply will appear here</div>
     <div class="button-container">
+      <button onclick="generateSingle(${i})" class="retry-btn">Generate Reply</button>
       <button onclick="reloadReply(${i})">Reload AI Reply</button>
       <button onclick="sendToTwitter(${i})">Send</button>
       <button onclick="copyReply(${i})">Copy</button>
     </div>
   `;
-  rowsDiv.appendChild(row);
-}
-async function fetchTweetText(url){ try { const resp = await fetch("https://publish.twitter.com/oembed?url=" + encodeURIComponent(url)); const data = await resp.json(); return data.html.replace(/<[^>]*>?/gm,'').trim(); } catch { return ""; } }
-async function aiReply(prompt, tone){ try { const resp = await fetch("/.netlify/functions/aiReply", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({prompt, tone}) }); const data = await resp.json(); return data.reply || "AI did not respond"; } catch { return "Error generating reply"; } }
-async function generateAll(){ const tone = document.getElementById("toneSelect").value; for(let i=1;i<=10;i++){ const link = document.getElementById("link"+i).value.trim(); const replyDiv = document.getElementById("reply"+i); if(!link){ replyDiv.textContent="Paste tweet link first"; continue; } replyDiv.textContent="Generating..."; const tweetText = await fetchTweetText(link); const reply = await aiReply(tweetText || "Tweet unavailable", tone); replyDiv.textContent = reply; replyDiv.dataset.lastPrompt = tweetText || ""; replyDiv.dataset.tone = tone; } }
-async function reloadReply(i){ const replyDiv = document.getElementById("reply"+i); const lastPrompt = replyDiv.dataset.lastPrompt; const tone = replyDiv.dataset.tone; if(!lastPrompt){ replyDiv.textContent="Generate first"; return; } replyDiv.textContent="Generating new variation..."; replyDiv.textContent = await aiReply(lastPrompt, tone); }
-function copyReply(i){ const reply = document.getElementById("reply"+i).textContent; navigator.clipboard.writeText(reply); }
-function sendToTwitter(i){ const reply = document.getElementById("reply"+i).textContent; const link = document.getElementById("link"+i).value.trim(); const id = link.split("/").pop().split("?")[0]; const url = "https://twitter.com/intent/tweet?in_reply_to=" + id + "&text=" + encodeURIComponent(reply); window.open(url, "_blank"); }
-</script>
-</body>
-</html>
