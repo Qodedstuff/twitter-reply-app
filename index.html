@@ -9,14 +9,14 @@ html, body { width: 100%; height: 100%; margin: 0; padding: 0; font-family: Aria
 h1 { text-align: center; margin-bottom: 10px; }
 .container { width: 95%; max-width: 900px; margin: auto; padding: 10px; }
 .row { display: flex; flex-direction: column; border: 1px solid #ddd; padding: 8px; margin: 10px 0; background: #fff; border-radius: 5px; }
-input, select, button { width: 100%; padding: 12px; margin-bottom: 5px; box-sizing: border-box; }
+input, select, button, textarea { width: 100%; padding: 12px; margin-bottom: 5px; box-sizing: border-box; }
+textarea { min-height: 60px; font-family: Arial; resize: vertical; }
 .reply { margin-top: 5px; padding: 8px; border: 1px solid #ccc; background: #f0f0f0; min-height: 50px; border-radius: 4px; }
 .button-container { display: flex; flex-direction: column; gap: 5px; margin-top: 5px; }
 .follow-call { text-align: center; font-weight: bold; margin: 20px 0; font-size: 18px; color: #222; }
 .follow-call a { color: #1DA1F2; text-decoration: none; }
 .footer { text-align: center; margin-top: 20px; font-size: 14px; color: #555; }
-.retry-btn { background: #1DA1F2; color: white; border: none; cursor: pointer; }
-.retry-btn:hover { background: #0d8bd9; }
+.status { font-size: 12px; color: #666; margin-top: 5px; }
 </style>
 </head>
 <body>
@@ -41,11 +41,159 @@ for(let i=1; i<=10; i++){
   row.className="row";
   row.innerHTML = `
     <input id="link${i}" placeholder="Paste tweet link ${i}">
+    <textarea id="text${i}" placeholder="Or paste tweet text here (optional)"></textarea>
+    <div class="status" id="status${i}"></div>
     <div id="reply${i}" class="reply">AI reply will appear here</div>
     <div class="button-container">
-      <button onclick="generateSingle(${i})" class="retry-btn">Generate Reply</button>
       <button onclick="reloadReply(${i})">Reload AI Reply</button>
       <button onclick="sendToTwitter(${i})">Send</button>
       <button onclick="copyReply(${i})">Copy</button>
     </div>
   `;
+  rowsDiv.appendChild(row);
+}
+
+async function fetchTweetText(url) {
+  try {
+    // Try multiple endpoints for better reliability
+    const endpoints = [
+      `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}`,
+      `https://cdn.syndication.twimg.com/tweet-result?id=${extractTweetId(url)}`
+    ];
+    
+    for (const endpoint of endpoints) {
+      try {
+        const resp = await fetch(endpoint, { 
+          headers: { 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(5000) // 5 second timeout
+        });
+        
+        if (resp.ok) {
+          const data = await resp.json();
+          const text = data.html?.replace(/<[^>]*>?/gm, '').trim() || data.text?.trim();
+          if (text && text.length > 10) return text;
+        }
+      } catch (e) {
+        continue; // Try next endpoint
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractTweetId(url) {
+  return url.split('/').pop().split('?')[0];
+}
+
+async function aiReply(prompt, tone) {
+  try {
+    const resp = await fetch("/.netlify/functions/aiReply", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({prompt, tone}),
+      signal: AbortSignal.timeout(15000) // 15 second timeout
+    });
+    
+    if (!resp.ok) {
+      return "Service temporarily unavailable. Please try again.";
+    }
+    
+    const data = await resp.json();
+    return data.reply || "Could not generate reply";
+  } catch (err) {
+    if (err.name === 'TimeoutError') {
+      return "Request timed out. Please try again.";
+    }
+    return "Connection error. Check your internet and try again.";
+  }
+}
+
+async function generateAll() {
+  const tone = document.getElementById("toneSelect").value;
+  
+  for(let i=1; i<=10; i++) {
+    const link = document.getElementById("link"+i).value.trim();
+    const manualText = document.getElementById("text"+i).value.trim();
+    const replyDiv = document.getElementById("reply"+i);
+    const statusDiv = document.getElementById("status"+i);
+    
+    if(!link && !manualText) {
+      replyDiv.textContent = "Paste a tweet link or text";
+      statusDiv.textContent = "";
+      continue;
+    }
+    
+    replyDiv.textContent = "Generating...";
+    statusDiv.textContent = "⏳ Processing...";
+    
+    let tweetText = manualText;
+    
+    // If no manual text, try to fetch from link
+    if (!tweetText && link) {
+      statusDiv.textContent = "⏳ Fetching tweet...";
+      tweetText = await fetchTweetText(link);
+      
+      if (!tweetText) {
+        replyDiv.textContent = "Could not fetch tweet. Try pasting the tweet text manually.";
+        statusDiv.textContent = "❌ Fetch failed";
+        continue;
+      }
+    }
+    
+    statusDiv.textContent = "⏳ Generating reply...";
+    const reply = await aiReply(tweetText, tone);
+    replyDiv.textContent = reply;
+    replyDiv.dataset.lastPrompt = tweetText;
+    replyDiv.dataset.tone = tone;
+    statusDiv.textContent = "✅ Done";
+    
+    // Small delay to avoid rate limits
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+}
+
+async function reloadReply(i) {
+  const replyDiv = document.getElementById("reply"+i);
+  const statusDiv = document.getElementById("status"+i);
+  const lastPrompt = replyDiv.dataset.lastPrompt;
+  const tone = replyDiv.dataset.tone;
+  
+  if(!lastPrompt) {
+    replyDiv.textContent = "Generate first";
+    return;
+  }
+  
+  statusDiv.textContent = "⏳ Regenerating...";
+  replyDiv.textContent = "Generating new variation...";
+  const reply = await aiReply(lastPrompt, tone);
+  replyDiv.textContent = reply;
+  statusDiv.textContent = "✅ Done";
+}
+
+function copyReply(i) {
+  const reply = document.getElementById("reply"+i).textContent;
+  navigator.clipboard.writeText(reply);
+  document.getElementById("status"+i).textContent = "✅ Copied!";
+  setTimeout(() => {
+    document.getElementById("status"+i).textContent = "";
+  }, 2000);
+}
+
+function sendToTwitter(i) {
+  const reply = document.getElementById("reply"+i).textContent;
+  const link = document.getElementById("link"+i).value.trim();
+  
+  if (!link) {
+    alert("Please paste the tweet link first");
+    return;
+  }
+  
+  const id = extractTweetId(link);
+  const url = "https://twitter.com/intent/tweet?in_reply_to=" + id + "&text=" + encodeURIComponent(reply);
+  window.open(url, "_blank");
+}
+</script>
+</body>
+</html>
