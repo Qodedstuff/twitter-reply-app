@@ -2,25 +2,25 @@ exports.handler = async function(event) {
   try {
     const { prompt, tone } = JSON.parse(event.body);
     
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
+        "Authorization": "Bearer " + process.env.GROQ_API_KEY
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 150,
+        model: "llama-3.3-70b-versatile",
         messages: [{
           role: "user",
           content: `Write a short, ${tone} reply to this tweet. Keep it under 280 characters and make it engaging and natural:\n\n"${prompt}"`
-        }]
+        }],
+        max_tokens: 100,
+        temperature: 0.8
       })
     });
     
     const data = await resp.json();
-    const reply = data.content?.[0]?.text || "Error generating reply";
+    const reply = data.choices?.[0]?.message?.content || "Error generating reply";
     
     return { 
       statusCode: 200, 
